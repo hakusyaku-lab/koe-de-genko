@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>声で原稿</title>
+<meta name="description" content="話した内容を文字にして、そのままGitHubのフォルダに保存できる音声メモ。iPhone・Android・Windows・Macのブラウザで使えます。">
+<meta name="theme-color" content="#f6f3ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161513" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="声で原稿">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root {
+    --bg: #f6f3ee;
+    --paper: #fffdf9;
+    --ink: #24211d;
+    --muted: #6f685e;
+    --line: #e2dcd2;
+    --accent: #b5452f;
+    --accent-ink: #fff;
+    --accent-soft: rgba(181, 69, 47, .14);
+    --btn: #ece6dc;
+    --btn-ink: #2b2722;
+    --ok: #2f7a4f;
+    --warn: #a4521a;
+    --radius: 14px;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161513;
+      --paper: #1e1c19;
+      --ink: #ece6dc;
+      --muted: #a39b8f;
+      --line: #34302a;
+      --accent: #d9654c;
+      --accent-soft: rgba(217, 101, 76, .2);
+      --btn: #2a2723;
+      --btn-ink: #ece6dc;
+      --ok: #6cc28d;
+      --warn: #e09a5c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", "Noto Sans JP", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column; min-height: 100dvh;
+    padding: calc(12px + var(--safe-t)) 16px calc(12px + var(--safe-b));
+  }
+  .wrap { width: min(760px, 100%); margin: 0 auto; flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  header { display: flex; align-items: center; gap: 10px; }
+  h1 { font-size: 18px; margin: 0; letter-spacing: .04em; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  h1 small { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 6px; letter-spacing: 0; }
+  .icon-btn { background: transparent; border: 0; color: var(--muted); font-size: 14px; padding: 8px; border-radius: 10px; cursor: pointer; }
+  .icon-btn:hover { background: var(--btn); color: var(--ink); }
+
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input[type=text], select {
+    font: inherit; font-size: 16px; color: var(--ink); background: var(--paper);
+    border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; min-width: 0;
+  }
+  #title { flex: 1 1 200px; }
+  .dest { display: flex; gap: 6px; }
+  .dest label {
+    font-size: 14px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--paper); cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  .dest input { position: absolute; opacity: 0; pointer-events: none; }
+  .dest input:checked + span { color: var(--accent); font-weight: 600; }
+  .dest label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+
+  .editor-box { position: relative; flex: 1; min-height: 220px; display: flex; }
+  textarea {
+    flex: 1; width: 100%; resize: none; font: inherit; font-size: 17px; line-height: 1.85;
+    color: var(--ink); background: var(--paper); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px 16px 44px; outline: none;
+  }
+  textarea:focus { border-color: var(--accent); }
+  #interim {
+    position: absolute; left: 12px; right: 12px; bottom: 10px; font-size: 14px; color: var(--muted);
+    background: var(--bg); border-radius: 8px; padding: 6px 10px; opacity: 0; transition: opacity .15s;
+    pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #interim.show { opacity: 1; }
+
+  .bar { display: flex; align-items: center; gap: 10px; }
+  #status { font-size: 13px; color: var(--muted); flex: 1; min-height: 1.4em; }
+  #status.ok { color: var(--ok); } #status.warn { color: var(--warn); } #status.listen { color: var(--accent); }
+  #count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  .actions { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: stretch; }
+  .mic {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font: inherit; font-size: 17px; font-weight: 600; border: 0; border-radius: var(--radius);
+    padding: 16px; background: var(--ink); color: var(--paper); cursor: pointer; min-height: 58px;
+  }
+  .mic svg { width: 22px; height: 22px; }
+  .mic.listening { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 6px var(--accent-soft); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 11px var(--accent-soft); } }
+  .mic:disabled { opacity: .45; cursor: not-allowed; }
+  .save {
+    font: inherit; font-size: 15px; font-weight: 600; border: 2px solid var(--accent); color: var(--accent);
+    background: transparent; border-radius: var(--radius); padding: 0 18px; cursor: pointer; white-space: nowrap;
+  }
+  .save:hover { background: var(--accent-soft); }
+  .sub { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sub button {
+    font: inherit; font-size: 14px; border: 0; border-radius: 10px; padding: 9px 13px;
+    background: var(--btn); color: var(--btn-ink); cursor: pointer;
+  }
+  .sub button:hover { filter: brightness(.96); }
+  .sub .right { margin-left: auto; }
+  @media (max-width: 420px) { .sub { gap: 6px; } .sub button { padding: 8px 10px; font-size: 13px; } }
+
+  .note { font-size: 13px; color: var(--muted); line-height: 1.7; background: var(--paper); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; }
+  .note[hidden] { display: none; }
+
+  dialog {
+    width: min(560px, calc(100% - 24px)); border: 1px solid var(--line); border-radius: 16px;
+    background: var(--paper); color: var(--ink); padding: 18px;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog h2 { font-size: 17px; margin: 0 0 12px; }
+  .field { display: grid; gap: 4px; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+  .field input { width: 100%; }
+  .help { font-size: 13px; line-height: 1.8; color: var(--muted); }
+  .help b { color: var(--ink); }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  .dlg-actions button { font: inherit; font-size: 14px; border: 0; border-radius: 10px; padding: 9px 16px; background: var(--btn); color: var(--btn-ink); cursor: pointer; }
+  .dlg-actions .primary { background: var(--ink); color: var(--paper); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>声で原稿<small id="repoLabel"></small></h1>
+    <button class="icon-btn" id="btnHelp" type="button">使い方</button>
+    <button class="icon-btn" id="btnSettings" type="button">設定</button>
+  </header>
+
+  <div class="row">
+    <input type="text" id="title" placeholder="タイトル（ファイル名になります・空でもOK）" autocomplete="off">
+    <div class="dest" role="radiogroup" aria-label="保存先">
+      <label><input type="radio" name="dest" value="a" checked><span id="destLabelA">見本</span></label>
+      <label><input type="radio" name="dest" value="b"><span id="destLabelB">原稿メモ</span></label>
+    </div>
+  </div>
+
+  <p class="note" id="nosupport" hidden>
+    このブラウザは音声認識に対応していません。<b>キーボードのマイクボタン（音声入力）</b>で話しても同じように使えます。
+    （ボタンで話せるのは Chrome・Edge・Safari です。Firefox は対応していません）
+  </p>
+
+  <div class="editor-box">
+    <textarea id="editor" placeholder="下のボタンを押して話すと、ここに文字になります。&#10;「改行」「句点」「読点」と言うと、改行・。・、が入ります。&#10;そのまま手で直すこともできます。"></textarea>
+    <div id="interim" aria-live="polite"></div>
+  </div>
+
+  <div class="bar"><span id="status">待機中</span><span id="count">0 文字</span></div>
+
+  <div class="actions">
+    <button class="mic" id="mic" type="button" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <span id="micLabel">タップして話す</span>
+    </button>
+    <button class="save" id="btnSave" type="button">GitHubに保存</button>
+  </div>
+
+  <div class="sub">
+    <button type="button" id="btnCopy">コピー</button>
+    <button type="button" id="btnShare">共有・ファイル</button>
+    <button type="button" id="btnClaude">Claudeに頼む</button>
+    <button type="button" id="btnClear" class="right">クリア</button>
+  </div>
+</div>
+
+<dialog id="dlgSettings">
+  <h2>保存先の設定</h2>
+  <div class="field">GitHubのリポジトリ（持ち主/名前）<input type="text" id="setRepo" placeholder="例：hakusyaku-lab/shippitsu-ai" autocomplete="off"></div>
+  <div class="field">ブランチ<input type="text" id="setBranch" placeholder="main" autocomplete="off"></div>
+  <div class="field">保存先1のフォルダと表示名<div class="row"><input type="text" id="setDirA" placeholder="samples" style="flex:1"><input type="text" id="setNameA" placeholder="見本" style="width:8em"></div></div>
+  <div class="field">保存先2のフォルダと表示名<div class="row"><input type="text" id="setDirB" placeholder="inbox" style="flex:1"><input type="text" id="setNameB" placeholder="原稿メモ" style="width:8em"></div></div>
+  <p class="help">設定はこの端末のブラウザにだけ保存されます。パスワードやトークンは使いません。</p>
+  <div class="dlg-actions"><button type="button" id="setCancel">閉じる</button><button type="button" class="primary" id="setOk">保存</button></div>
+</dialog>
+
+<dialog id="dlgHelp">
+  <h2>使い方</h2>
+  <div class="help">
+    <p><b>1. 話す</b>：「タップして話す」を押して話します。もう一度押すと止まります。「改行」「句点」「読点」で改行・。・、が入ります。</p>
+    <p><b>2. 直す</b>：文字はそのまま手で直せます。書きかけは自動でこの端末に残ります。</p>
+    <p><b>3. 保存</b>：保存先（見本／原稿メモ）を選んで「GitHubに保存」。GitHubの保存画面が中身入りで開くので、緑の「Commit changes」を押せば保存完了です（GitHubにログインしている必要があります）。</p>
+    <p><b>見本</b>は執筆AIに書き方を覚えさせるための自分の文章、<b>原稿メモ</b>はあとでAIに記事などへ仕上げてもらう下書きです。</p>
+    <p>「Claudeに頼む」は、原稿と依頼文をまとめてコピーして Claude Code を開きます。チャット欄に貼り付けて送ってください。</p>
+    <p>ボタンで話せるのは Chrome・Edge・Safari です。使えないときは、キーボードのマイク（音声入力）で話しても同じように使えます。</p>
+  </div>
+  <div class="dlg-actions"><button type="button" class="primary" id="helpOk">閉じる</button></div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const editor = $("editor"), interimEl = $("interim"), statusEl = $("status"), countEl = $("count");
+  const micBtn = $("mic"), micLabel = $("micLabel"), titleEl = $("title");
+
+  // ---------- 保存（この端末だけ） ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("koe:" + k); return v === null ? d : v; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("koe:" + k, v); } catch (e) {} }
+  };
+  const DEFAULTS = { repo: "", branch: "main", dirA: "samples", nameA: "見本", dirB: "inbox", nameB: "原稿メモ" };
+  const qs = new URLSearchParams(location.search);
+  if (qs.get("repo")) store.set("repo", qs.get("repo"));
+  const cfg = () => ({
+    repo: store.get("repo", DEFAULTS.repo).trim(),
+    branch: store.get("branch", DEFAULTS.branch).trim() || "main",
+    dirA: store.get("dirA", DEFAULTS.dirA).trim(), nameA: store.get("nameA", DEFAULTS.nameA).trim() || "保存先1",
+    dirB: store.get("dirB", DEFAULTS.dirB).trim(), nameB: store.get("nameB", DEFAULTS.nameB).trim() || "保存先2"
+  });
+  function renderCfg() {
+    const c = cfg();
+    $("destLabelA").textContent = c.nameA; $("destLabelB").textContent = c.nameB;
+    $("repoLabel").textContent = c.repo ? "→ " + c.repo.split("/")[1] : "";
+    $("repoLabel").title = c.repo;
+  }
+
+  function setStatus(text, kind) { statusEl.textContent = text; statusEl.className = kind || ""; }
+  function updateCount() { countEl.textContent = editor.value.length.toLocaleString("ja-JP") + " 文字"; }
+  let saveTimer = 0;
+  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { store.set("draft", editor.value); store.set("title", titleEl.value); }, 200); }
+
+  editor.value = store.get("draft", ""); titleEl.value = store.get("title", "");
+  const savedDest = store.get("dest", "a");
+  document.querySelectorAll('input[name=dest]').forEach(r => { r.checked = r.value === savedDest; r.addEventListener("change", () => store.set("dest", r.value)); });
+  renderCfg(); updateCount();
+
+  // ---------- 文字の挿入 ----------
+  let caret = { start: editor.value.length, end: editor.value.length };
+  const remember = () => { caret.start = editor.selectionStart; caret.end = editor.selectionEnd; };
+  editor.addEventListener("input", () => { remember(); updateCount(); scheduleSave(); });
+  ["keyup", "click", "select"].forEach(ev => editor.addEventListener(ev, remember));
+  titleEl.addEventListener("input", scheduleSave);
+
+  function insertText(text) {
+    if (!text) return;
+    const start = document.activeElement === editor ? editor.selectionStart : caret.start;
+    const end = document.activeElement === editor ? editor.selectionEnd : caret.end;
+    editor.setRangeText(text, start, end, "end");
+    caret.start = caret.end = start + text.length;
+    updateCount(); scheduleSave();
+    if (document.activeElement !== editor) editor.scrollTop = editor.scrollHeight;
+  }
+  const voiceCommands = (s) => s.replace(/改行/g, "\n").replace(/句点/g, "。").replace(/読点/g, "、");
+  let lastFinal = "", lastFinalAt = 0;
+  function insertFinal(raw) {
+    const t = voiceCommands(raw).replace(/^[ \t　]+|[ \t　]+$/g, "");
+    if (!t) return;
+    const now = Date.now();
+    if (t !== "\n" && t === lastFinal && now - lastFinalAt < 1600) return; // 同じ文の二重入力を防ぐ
+    lastFinal = t; lastFinalAt = now;
+    insertText(t);
+  }
+
+  // ---------- 音声認識 ----------
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, want = false;
+  function setListening(on) {
+    micBtn.classList.toggle("listening", on);
+    micBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    micLabel.textContent = on ? "聞き取り中（タップで停止）" : "タップして話す";
+    if (on) setStatus("聞いています…", "listen"); else { setStatus("待機中"); interimEl.classList.remove("show"); }
+  }
+  function safeStart() { if (rec && want) { try { rec.start(); } catch (e) {} } }
+
+  if (!SpeechRec) {
+    $("nosupport").hidden = false; micBtn.disabled = true;
+    micLabel.textContent = "キーボードの音声入力を使ってください";
+  } else {
+    rec = new SpeechRec();
+    rec.lang = "ja-JP"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    rec.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const piece = e.results[i][0].transcript;
+        if (e.results[i].isFinal) insertFinal(piece); else interim += piece;
+      }
+      interimEl.textContent = interim.trim();
+      interimEl.classList.toggle("show", !!interim.trim());
+    };
+    rec.onerror = (e) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") { want = false; setListening(false); setStatus("マイクの使用が許可されていません（ブラウザの設定で許可してください）", "warn"); return; }
+      if (e.error === "audio-capture") { want = false; setListening(false); setStatus("マイクが見つかりません", "warn"); return; }
+      if (e.error === "network") setStatus("音声認識につながりません（ネット接続を確認）", "warn");
+    };
+    rec.onend = () => { interimEl.classList.remove("show"); if (want) setTimeout(safeStart, 120); else setListening(false); };
+    micBtn.addEventListener("click", () => {
+      if (want) { want = false; try { rec.stop(); } catch (e) {} setListening(false); }
+      else { want = true; lastFinal = ""; setListening(true); safeStart(); }
+    });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && want) safeStart(); });
+  }
+
+  // ---------- ファイル名 ----------
+  function stamp() {
+    const d = new Date(), p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+  }
+  function fileName() {
+    let t = titleEl.value.trim() || editor.value.trim().split(/\n/)[0].slice(0, 20) || "音声原稿";
+    t = t.replace(/[\\/:*?"<>|#%&{}$!'@`+=\s]+/g, "_").replace(/^[._]+|[._]+$/g, "").slice(0, 40) || "音声原稿";
+    return `${stamp()}_${t}.md`;
+  }
+  function body() {
+    const t = titleEl.value.trim(), text = editor.value.replace(/\s+$/, "");
+    return (t ? `# ${t}\n\n` : "") + text + "\n";
+  }
+  function currentDest() {
+    const c = cfg(), v = (document.querySelector('input[name=dest]:checked') || {}).value || "a";
+    return v === "b" ? { dir: c.dirB, name: c.nameB } : { dir: c.dirA, name: c.nameA };
+  }
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch (e) {
+      const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand("copy"); } catch (e2) {}
+      ta.remove(); return ok;
+    }
+  }
+
+  // ---------- GitHubに保存 ----------
+  $("btnSave").addEventListener("click", async () => {
+    const c = cfg();
+    if (!editor.value.trim()) { setStatus("原稿が空です", "warn"); return; }
+    if (!/^[\w.-]+\/[\w.-]+$/.test(c.repo)) { setStatus("先に「設定」で保存先のリポジトリを入れてください", "warn"); openSettings(); return; }
+    const dest = currentDest();
+    const path = (dest.dir ? dest.dir.replace(/^\/+|\/+$/g, "") + "/" : "") + fileName();
+    const base = `https://github.com/${c.repo}/new/${encodeURIComponent(c.branch)}?filename=${encodeURIComponent(path)}`;
+    const content = body();
+    let url = base + "&value=" + encodeURIComponent(content);
+    if (url.length > 7500) { // 長すぎる原稿はURLに入らないので、コピーしてから開く
+      const ok = await copyText(content);
+      url = base;
+      setStatus(ok ? "長い原稿なのでコピーしました。開いた画面の本文欄に貼り付けて保存してください" : "長い原稿です。「コピー」してから貼り付けてください", ok ? "ok" : "warn");
+    } else {
+      setStatus(`「${dest.name}」の保存画面を開きました。緑の「Commit changes」を押すと保存されます`, "ok");
+    }
+    window.open(url, "_blank", "noopener");
+  });
+
+  $("btnCopy").addEventListener("click", async () => setStatus(await copyText(body()) ? "コピーしました" : "コピーできませんでした", "ok"));
+
+  $("btnShare").addEventListener("click", async () => {
+    const name = fileName(), content = body();
+    try {
+      const file = new File([content], name, { type: "text/markdown" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
+    a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setStatus("ファイルとして保存しました", "ok");
+  });
+
+  $("btnClaude").addEventListener("click", async () => {
+    const c = cfg(), dest = currentDest(), path = (dest.dir ? dest.dir + "/" : "") + fileName();
+    const prompt = `次の原稿を ${path} として保存してください。` +
+      (dest.dir === "samples" ? "" : "保存したら、CLAUDE.md の執筆ルールに沿って読みやすい文章に整えた版も output/ に作ってください。") +
+      "\n\n---\n" + body();
+    const ok = await copyText(prompt);
+    setStatus(ok ? `依頼文をコピーしました。Claude Code で ${c.repo || "リポジトリ"} を選び、貼り付けて送ってください` : "コピーできませんでした", ok ? "ok" : "warn");
+    window.open("https://claude.ai/code", "_blank", "noopener");
+  });
+
+  $("btnClear").addEventListener("click", () => {
+    if (!editor.value && !titleEl.value) return;
+    if (!confirm("原稿とタイトルを消しますか？")) return;
+    editor.value = ""; titleEl.value = ""; caret = { start: 0, end: 0 }; lastFinal = "";
+    updateCount(); store.set("draft", ""); store.set("title", ""); setStatus("クリアしました");
+  });
+
+  // ---------- 設定・使い方 ----------
+  const dlgS = $("dlgSettings"), dlgH = $("dlgHelp");
+  function openSettings() {
+    const c = cfg();
+    $("setRepo").value = c.repo; $("setBranch").value = c.branch;
+    $("setDirA").value = c.dirA; $("setNameA").value = c.nameA; $("setDirB").value = c.dirB; $("setNameB").value = c.nameB;
+    dlgS.showModal();
+  }
+  $("btnSettings").addEventListener("click", openSettings);
+  $("setCancel").addEventListener("click", () => dlgS.close());
+  $("setOk").addEventListener("click", () => {
+    const repo = $("setRepo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\.git$|\/$/g, "");
+    if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) { alert("「持ち主/名前」の形で入れてください（例：hakusyaku-lab/shippitsu-ai）"); return; }
+    store.set("repo", repo); store.set("branch", $("setBranch").value.trim() || "main");
+    store.set("dirA", $("setDirA").value.trim()); store.set("nameA", $("setNameA").value.trim());
+    store.set("dirB", $("setDirB").value.trim()); store.set("nameB", $("setNameB").value.trim());
+    renderCfg(); dlgS.close(); setStatus("設定を保存しました", "ok");
+  });
+  $("btnHelp").addEventListener("click", () => dlgH.showModal());
+  $("helpOk").addEventListener("click", () => dlgH.close());
+  if (!cfg().repo) setStatus("はじめに「設定」で保存先のGitHubリポジトリを入れてください", "warn");
+})();
+</script>
+</body>
+</html>
